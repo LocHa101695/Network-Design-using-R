@@ -1,0 +1,486 @@
+---
+title: "MATH 4753 Project 2"
+author: "Loc Ha"
+date:  "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    code_folding: show
+    csl: biomed-central.csl
+    df_print: paged
+    fig_caption: yes
+    fig_height: 6
+    fig_width: 7
+    number_sections: yes
+    theme: journal
+    toc: yes
+    toc_float: yes
+  word_document:
+    toc: yes
+    toc_depth: 4
+  pdf_document:
+    df_print: kable
+    fig_caption: yes
+    fig_height: 6
+    fig_width: 7
+    highlight: tango
+    toc: yes
+    toc_depth: 4
+bibliography: project.bib
+abstract: This project is all about applications of SLR to real data using R. My project involves analyzing a dataset to understand the balance between initial costs and ongoing repair costs in network design. This data is sourced from a practice problem in the textbook Statistics for Engineering and the Sciences, 6th Edition by William M. Mendenhall and Terry L. Sincich (2016). I plan to utilize this textbook, the dataset, and the statistical knowledge I've gained this semester to conduct my analysis using the R programming language. Specifically, I aim to apply Simple Linear Regression to explore how the sizing of water distribution pipes, based on certain performance measures, correlates with both the lifetime repair and replacement expenses and the initial costs.
+---
+
+<center>
+
+![Loc Ha](locha.jpg){ width=20% }
+
+</center>
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(leaflet)
+library(dplyr)
+```
+
+# Introduction
+
+In the field of civil engineering, maintaining and optimizing water distribution networks is a crucial task. One of the critical decisions engineers face is whether to repair or replace water pipes when they fail. The cost implications of this decision are significant and can greatly impact municipal budgets and service reliability.
+
+The data was collected here:
+
+```{r map, echo=FALSE, fig.align='center'}
+leaflet() %>%
+  setView(lng=-97.445717, lat=35.205894, zoom= 16) %>% 
+  addTiles() %>%
+  addMarkers(lng=-97.445717, lat=35.205894, popup="We collected grasshoppers here!! Dr Stewart helped.") 
+```
+
+## Story Behind the Data?
+
+Once upon a time in a bustling city, a network of water pipes lay hidden beneath the streets, silently working day and night to bring life's most essential resource to homes and businesses. These pipes, varying in size and age, were the veins of the city, and their health was crucial to the city's vitality.
+
+<center>
+
+![Burst Pipe Causes Flooding on College Campus](pic.jpg){ width=20% }
+
+<center>
+
+As the city grew, so did its thirst. The once young and robust pipes began to show signs of wear. They would occasionally break, causing streets to flood and taps to run dry. The city's engineers faced a dilemma each time a pipe failed - to repair the old soldier or to replace it with a new one. This decision was not easy, for the city's coffers were not bottomless, and the choice had to be wise and judicious.
+
+Enter the realm of data and analysis. The engineers, armed with numbers and figures, embarked on a quest to understand the mysterious life of these underground pipes. They began to collect tales of every break, repair, and replacement. Each pipe had its own story, with its diameter playing a leading role.
+
+As the engineers delved into these tales, patterns began to emerge. The larger pipes, like mighty rivers, were more expensive to replace but broke less often. The smaller ones, like trickling streams, were cheaper to mend but needed attention more frequently. The cost of repair and replacement danced together in a complex ballet, guided by the size and material of the pipes.
+
+This was not just a story of pipes and water. It was a tale of change, of embracing the power of data and analysis to make informed decisions. The city's water distribution network became more than just infrastructure; it was a symbol of efficiency, sustainability, and resilience.
+(see @KJ).
+
+And so, the story of the city's water pipes was one of unseen heroes, hidden beneath the hustle and bustle, quietly ensuring that life, in all its vibrancy, continued above.
+
+## The Data
+
+### Variables
+
+Diameter (mm): Represents the size of the pipe
+
+Ratio: The ratio of repair cost to replacement cost.
+
+```{r}
+pip <- read.csv("WATERPIPE.csv",header = TRUE)
+head(pip)
+```
+
+```{r crosstalk}
+library(crosstalk)
+library(leaflet)
+library(DT)
+
+# Wrap data frame in SharedData
+sd <- SharedData$new(quakes[sample(nrow(quakes), 100),])
+
+# Create a filter input
+filter_slider("mag", "Magnitude", sd, column=~mag, step=0.1, width=250)
+
+# Use SharedData like a dataframe with Crosstalk-enabled widgets
+bscols(
+  leaflet(sd) %>% addTiles() %>% addMarkers(),
+  datatable(sd, extensions="Scroller", style="bootstrap", class="compact", width="100%",
+    options=list(deferRender=TRUE, scrollY=300, scroller=TRUE))
+)
+```
+
+
+```{r}
+library(d3scatter)
+
+shared_pip <- SharedData$new(pip)
+bscols(widths = c(2,NA,NA),
+  list(
+    filter_checkbox("DIAMETER", "DIAMETER", shared_pip, ~DIAMETER, inline = TRUE),
+    filter_slider("RATIO", "RATIO", shared_pip, ~RATO, width = "100%")),
+  d3scatter(shared_pip, ~RATO, ~DIAMETER, width="100%", height=250)
+)
+```
+
+### Preliminary Plots and Interpretation of the Data
+
+```{r carcharacteristics, fig.height = 5, fig.cap = "pip",fig.align='center',fig.cap="Graph of data with loess smoother"}
+library(ggplot2)
+g = ggplot(pip, aes(x = DIAMETER, y = RATO)) + geom_point()
+g = g + geom_smooth(method = "loess")
+g
+library (s20x)
+pairs20x(pip)
+```
+
+The initial graphs are designed to explore the potential correlation in the data collected in 2012. While the relationship seems consistently linear at first glance, subsequent detailed statistical evaluation will confirm the exact nature and strength of this association.
+
+# Theory behind the Analysis
+
+If the data points in my analysis were perfectly aligned without any prediction errors, a deterministic model would be suitable. However, initial graphical analysis reveals that the data points aren't perfectly aligned. In such cases, a probabilistic model, which accounts for the randomness in the distribution of data points around a predictive line, proves to be more accurate. One such probabilistic model is the Simple Linear Regression (SLR), which I will employ in my analysis. SLR is based on the premise that the mean value of the dependent variable (y) for any given value of the independent variable (x) will form a straight line when plotted. The deviation of any data points from this line, whether above or below, is represented by an error term, denoted as ε. This concept is expressed mathematically as:
+
+$$
+y = \beta_0 + \beta_1x_i + \epsilon_i
+$$
+
+In this context, $\beta_0$ and $\beta_1$ represent unknown parameters in the equation, where $\beta_0 + \beta_1x$ constitutes the expected mean value of $y$ for a given $x$, and $\epsilon$ symbolizes the random error component. Operating under the assumption that there will be deviations from the line due to the inherent variability in the data, it is anticipated that some points will fall above the line (indicating a positive deviation) while others will be below it (indicating a negative deviation). The expectation of $E(ε)=0$, meaning that on average, the deviations don't systematically veer in one direction (positive or negative) but rather fluctuate around the line. Consequently, the mean value of $y$, considering these deviations, is represented as:
+
+$$
+\begin{align*}
+E(y) &= E(\beta_0 + \beta_1x_i + \epsilon_i)
+\\
+&= \beta_0 + \beta_1x_i + E(\epsilon_i)
+\\
+&= \beta_0 + \beta_1x_i
+\end{align*}
+$$
+
+Therefore, the expected mean value of y for a given $x$ is denoted as $E(Y|x)$ and will graphically represent a straight line. This line is characterized by a y-intercept of $\beta_0$ and a slope of $beta_1$, illustrating the linear relationship between the variables.
+
+
+To effectively apply a Simple Linear Regression (SLR) model to your dataset, it's essential to estimate the parameters $\beta_0$ (the y-intercept) and $\beta_1$ (the slope). The accuracy of these estimates relies heavily on the sampling distributions of the estimators, which, in turn, are influenced by the probability distribution of the error term, $\epsilon$. The characteristics of this distribution, such as its mean, variance, and overall shape, play a crucial role in determining how well the estimators reflect the true linear relationship between the variables in your dataset. To proceed effectively, certain assumptions about the error term $\epsilon$ must be made in the context of Simple Linear Regression (SLR). These assumptions are crucial as they directly impact the validity and accuracy of the regression analysis. These assumptions typically include aspects like the distribution, variance, and independence of $\epsilon$, each playing a vital role in ensuring the reliability of the model's estimations and predictions. By carefully considering these assumptions, you can enhance the robustness and interpretability of your SLR model applied to the dataset. (Mendenhall and Sincich 2016):
+
+<body>
+    <ul>
+      <li>the mean of the probability distribution of $\epsilon= 0$</li>
+      <li>the variance of the probability distribution of $\epsilon$ is constant for all values of the independent variable - for a straight line model this means $V(\epsilon) = a$ constant for all values of $x$;</li>
+      <li>the probability distribution of $\epsilon$ is normal;</li>
+      <li>the errors associated with different observations are independent of one another.</li>
+    </ul>
+</body>
+
+## Interest in the data
+
+As a Data analyst, my role in discussing and analyzing data such as the dataset provided on water pipe diameters and repairing to replacement cost ratios, is to assist civil engineering in understanding and utilizing this information effectively. If the data is intended to inform decision-making in fields like urban planning or civil engineering, I can help draw practical and data driven conclusions.
+
+
+# Problem I wish to solve
+
+The trade-off between performance and cost provides a guideline to decision makers for selecting a design from many alternatives. The optimization model is solved using a differential evolution algorithm.
+
+# Estimating the Parameters
+
+In order to estimate $\beta_0$ and $\beta_1$ I am going to use the method of least squares, that is, I want to determine the line that best fits my data points with a minimum sum of squares of the deviations. This is called the SSE (sum of squares for error). In a straight-line model, I have already discussed that $y=\beta_0 + \beta_1x_i + \epsilon_i$. The estimator will be $\hat{y}=\hat{\beta_0} + \hat{\beta_1}x_i $. The residual (the deviation of the ith value of y from its predicted value) is calculated by
+
+$$
+(y_i-\hat{y_i})=y_i-(\hat{\beta_0}+\hat{\beta_1}x_i),\ thus, \ the\ SSE \ is
+\\
+\sum^{n}_{i=1}[y_i-(\hat{\beta_0}+\hat{\beta_1}x_i)]
+$$
+
+
+Should the model align effectively with the data, it's anticipated that the residuals will display an approximately Normal distribution, characterized by a mean of 0 and a consistent variance.(see @MW).
+
+## Method of Least Squares
+
+```{r}
+pip.lm = lm(RATO~DIAMETER, data = pip)
+summary(pip.lm)
+```
+According to to above information:
+
+$$
+\hat{\beta_0} = 6.6781993
+\\
+\hat{\beta_1} = 0.0047856
+$$
+
+We observe the values of both multiple and adjusted R-squared, which will be instrumental later in our analysis. As we compare various models, these metrics will help us identify the most suitable type of line to fit the data.
+
+## Calculating the Confidence Interval (CI) for Parameter Estimates
+
+```{r}
+ciReg(pip.lm, conf.level=0.95, print.out=TRUE)
+```
+
+## The Least-Squares Estimates
+
+$$
+\hat{\beta_0}+\hat{\beta_1}x_i = 6.6781993 + 0.0047856 \times x_i
+$$
+
+# Checking the Assumption
+
+I aim to establish whether a straight line is the optimal fit for the collected data. To achieve this, it's crucial to confirm that the previously mentioned assumptions are accurate.
+
+```{r}
+plot(RATO~DIAMETER,bg="royalblue",pch=21,cex=1.2,
+     ylim=c(0,1.1*max(RATO)),xlim=c(0,1.1*max(DIAMETER)),
+     main="Scatter Plot and Fitted Line of DIAMETER vs RATIO", data=pip)
+abline(pip.lm)
+```
+
+The initial observation from a simple scatter plot suggests that a straight line might be a suitable fit for the data. However, further statistical analysis is necessary to more accurately determine the best fitting model.
+
+## Residuals' Plot
+
+Plotting the residual line segments (the deviations about the fitted line), allows us to visualize the extent to which the points vary from the line we are trying to fit to the data. This also provides us with the RSS (residual sum of squares), which we will use in additional calculations to find the $R^2$
+ value of the line we are trying to fit to the data set.
+
+```{r}
+plot(RATO~DIAMETER,bg="royalblue",pch=21,cex=1.2,
+     ylim=c(0,1.1*max(RATO)),xlim=c(0,1.1*max(DIAMETER)),
+     main="Residual Line Segments of RATO vs DIAMETER", data=pip)
+ht.lm=with(pip, lm(RATO~DIAMETER))
+abline(ht.lm)
+yhat=with(pip,predict(ht.lm,data.frame(DIAMETER)))
+with(pip,{segments(DIAMETER,RATO,DIAMETER,yhat,col="orange")})
+abline(ht.lm)
+```
+
+## Means' Plot
+
+We can visualize the difference between the means of the RATIO data and DIAMETER data by graphing the mean of RATIO cut-off versus the mean of DIAMETER added with the fitted line and deviations of the fitted line from the mean height added. This will provide us with the MSS (model sum of squares), which we will use in conjunction with the RSS in a few steps.
+
+```{r}
+plot(RATO~DIAMETER,bg="Blue",pch=21,cex=1.2,
+             ylim=c(0,1.1*max(RATO)),xlim=c(0,1.1*max(DIAMETER)),
+             main="Mean of RATIO vs DIAMETER", data=pip)
+abline(pip.lm)
+with(pip, abline(h=mean(RATO)))
+abline(pip.lm)
+with(pip, segments(DIAMETER,mean(RATO),DIAMETER,yhat,col="Red"))
+```
+
+## Plot of Means with Total Deviation Line Segments
+
+Plotting the means of RATIO cut-off versus DIAMETER added with the total deviation line segments demonstrates visually $\bar{y}=\hat{y}$, and provides us with the TSS (total sum of squares).
+
+```{r}
+plot(RATO~DIAMETER,bg="Blue",pch=21,cex=1.2,
+              ylim=c(0,1.1*max(RATO)),xlim=c(0,1.1*max(DIAMETER)),
+              main="Total Deviation Line Segments of RATO vs DIAMETER", data=pip)
+with(pip,abline(h=mean(RATO)))
+with(pip, segments(DIAMETER,RATO,DIAMETER,mean(RATO),col="Green"))
+```
+
+## Specifying the Probability Distribution
+
+### Lowess Smoother Scatter Plot of RATIO versus DIAMETER 
+
+```{r}
+library(s20x)
+trendscatter(RATO~DIAMETER, f = 0.5, data = pip, main="RATIO vs DIAMETER")
+```
+
+The red lines depict the region of error where the line of best fit could be found. Again, we see a generally linear trend, with a reasonably narrow region of error.
+
+
+### Linear Model Object:
+
+```{r}
+pip.lm = with(pip, lm(RATO~DIAMETER))
+```
+
+### Find the Residuals:
+
+```{r}
+height.res = residuals(pip.lm)
+```
+
+### Find the Fitted Values:
+
+```{r}
+height.fit = fitted(pip.lm)
+```
+
+## Plot the Residuals versus RATIO
+
+```{r}
+plot(pip$RATO,height.res, xlab="RATIO",ylab="Residuals",ylim=c(-1.5*max(height.res),1.5*max(height.res)),xlim=c(0,1.6*max(height.fit)), main="Residuals vs RATIO")
+```
+
+It looks as though the residuals are somewhat symmetrical about the zero on the y-axis, this indicates that there is no significant deviation from the line of best-fit.
+
+## A Plot of the Residuals versus Fitted Values
+
+```{r}
+trendscatter(height.res~height.fit, f = 0.5, data = pip.lm, xlab="Fitted Values",ylab="Residuals",ylim=c(-1.1*max(height.res),1.1*max(height.res)),xlim=c(0,1.1*max(height.fit)), main="Residuals vs Fitted Values")
+```
+
+Once more, we observe uniformity around zero, which further reinforces the suitability of the linear model as the best fit for this data set.
+
+## Check Normally
+
+```{r}
+normcheck(pip.lm, shapiro.wilk = TRUE)
+```
+
+The p-value for the Shapiro-Wilk test is 0.089. The null hypothesis in this case would be that the errors are distributed normally:
+
+$$\epsilon_i \sim N(0,\sigma^2)$$
+
+The results of the Shapiro-Wilk test indicate that we do not have enough evidence to reject the null hypothesis (as the p-value $0.089$ is significantly greater than the standard of comparison, $0.05$), leading us to reasonably assume that the data is distributed normally.
+
+## Testing Another Model for Comparison 
+
+Is testing only a linear model sufficient? To conclusively determine the best fit for this dataset, I plan to compare the linear model results with those of a quadratic (curved) model.
+
+### Quadratic to the Points
+
+$$
+y_i = \beta_0 + \beta_1x_i + \beta_2x_i^2
+$$
+
+```{r}
+quad.lm=lm(RATO~DIAMETER + I(DIAMETER^2),data=pip)
+
+plot(RATO~DIAMETER,bg="Blue",pch=21,cex=1.2,
+   ylim=c(0,1.1*max(RATO)),xlim=c(0,1.1*max(DIAMETER)),main="Scatter Plot and Quadratic of RATIO vs DIAMETER",data=pip)
+myplot = function(x){quad.lm$coef[1] + quad.lm$coef[2]*x + quad.lm$coef[3]*x^2}
+curve(myplot, lwd = 2, add = TRUE)
+```
+
+Applying a quadratic model to the data yields a result that visually appears linear, similar to what we observed previously. However, a more in-depth analysis is needed to clarify these findings and enable us to make a definitive conclusion. (to learn another visualization @wil)
+
+### A Vector of Fitted Values:
+
+```{r}
+quad.fit = c(height.fit)
+quad.fit
+```
+
+### A Plot of the Residuals versus Fitted Values
+
+```{r}
+plot(quad.lm, which = 1)
+```
+
+There's a symmetrical distribution around the y-axis at the zero value. Notably, outliers are identified, and the linear trend still persists, even when we apply a quadratic model to the data.
+
+### Check Normality:
+
+```{r}
+normcheck(quad.lm, shapiro.wilk = TRUE)
+```
+
+The p-value is 0.86. Again, the results of the Shapiro-Wilk test indicate that we do not have enough evidence to reject the null hypothesis, leading us to again assume that the data is distributed normally.
+
+## Summarize the Model
+
+```{r}
+summary(quad.lm)
+```
+
+This gives us the following values:
+
+$$
+\beta_0 = 6.266e+00
+\\
+\beta_1 = 7.914e-03
+\\
+\beta_2 = -4.256e-06
+$$
+
+In addition, the multiple and $R^2_{adj}$ values are available. I can utilize these metrics to contrast with the corresponding calculations for the linear model. This comparison will help determine whether the linear or quadratic method is the more suitable fit for the data.
+
+### Calculating the Confidence Interval (CI) for Parameter Estimates
+
+```{r}
+ciReg(quad.lm, conf.level=0.95, print.out=TRUE)
+```
+
+### The equation of the fitted line
+
+$$
+\beta_0 + \beta_1x_i + \beta_2x_i^2 = (6.266e+00) + (7.914e-03)(x) + (-4.256e-06)(x^2)
+$$
+
+## Comparison of the Two Models
+
+### Making Predictions using the Two Models
+
+I want to try and predict the amount of the ratio of repair to cost of commercial pipe, when the diameter added is 650, 550, and 90 mm:
+
+Model 1:
+
+```{r}
+amount = predict(pip.lm, data.frame(DIAMETER=c(650,550,90)))
+amount
+```
+
+Model 2:
+
+```{r}
+amount2 = predict(quad.lm, data.frame(DIAMETER=c(650,550,90)))
+amount2
+```
+
+The forecasts generated by the initial model (linear) are marginally higher than those from the second model (quadratic), with both sets of predictions being very similar. Additional comparisons are required to ascertain which model provides the optimal fit for the dataset
+
+### Comparing R Values
+
+The multiple $R^2$ for the linear model is 0.9526, $R^2_{adj}$: 0.9483. The multiple $R^2$ for the quadratic model is 0.9768,	$R^2_{adj}$: 0.9722
+
+Based on these findings, it appears that both the linear and quadratic models adhere to the initial assumptions. When looking at the multiple $R^2$, the variation in the response is equally accounted for by both models. Yet, significant distinctions emerge when considering the adjusted $R^2$.
+
+# Using Anova as Confirmation
+
+To validate this observation, we can employ ANOVA (Analysis of Variance) to contrast the two models, thereby facilitating our final conclusions.
+
+```{r}
+anova(pip.lm,quad.lm)
+```
+
+These findings allow us to retain our null hypothesis that $\beta_2(\epsilon)\neq 0$, as the p-value is $< 0.05$. This implies that a linear fit is more effective than a quadratic line in representing the dataset.
+
+# Avoiding Bias by using Cook’s Distance
+
+Cook’s distance, $D_i$, is used in Regression Analysis to find influential outliers in a set of predictor variables. In other words, it’s a way to identify points that negatively affect your regression model. The measurement is a combination of each observation’s leverage and residual values; the higher the leverage and residuals, the higher the Cook’s distance. ("Cook’s Distance / Cook’s D: Definition, Interpretation") and (@c)
+
+```{r}
+cooks20x(pip.lm)
+```
+
+The Cook's Distance metric for this linear model and dataset indicates that observation numbers 13 have close enough to 0.10. This means they are substantial enough to be deemed significant, warranting further scrutiny.
+
+I have the option to create an updated version of the same linear model, utilizing the identical dataset but excluding the data point with the highest Cook's Distance (observation number 13).
+
+```{r}
+pip2.lm=lm(RATO~DIAMETER, data=pip[-13,])
+summary(pip2.lm)
+```
+
+Contrasting this newly developed model with the original one:
+
+```{r}
+summary(pip.lm)
+```
+
+Observations show a reduction in residual standard error, an increase in the multiple $R^2$, and a change in the coefficients' values. From this comparative analysis, it is evident that the second model, which excludes one observation, provides a more accurate fit for the data.
+
+# Conclusion
+
+This study aims to bridge the gap between theoretical analysis and practical application in the field of civil engineering, specifically in the maintenance of water distribution systems. The insights gained from this analysis could lead to more efficient and cost-effective management of water infrastructure.
+
+## Answer your research question
+
+The findings of analysis suggest that in terms of economic decision-making for repairing or replacing water pipes, the factor of diameter may have a straightforward (linear) impact on the cost ratio. This information can be particularly valuable for urban planners and civil engineers in designing cost-efficient water distribution systems and in making informed decisions about maintenance strategies.
+
+From the Simple Linear Regression (SLR) statistical analysis conducted on this dataset, it's evident that a linear model is the most suitable fit. This conclusion is reinforced by the fulfillment of the SLR model's assumptions and the demonstration that the data adheres more accurately to a modified linear model than to a quadratic one. Essentially, this indicates a predominantly linear relationship between the ratio of repair to the cost of commercial pipe. This insight is crucial as it enables the prediction of cost of commercial pipe based on the amount of the ratio of repair.
+
+## Suggest ways to improve model or experiment
+
+To enhance the model or experiment analyzing the relationship between water pipe diameter and maintenance costs, several strategies can be employed. Firstly, incorporating additional variables such as pipe material, age, and environmental factors like soil type and local water chemistry is crucial for a more comprehensive analysis. Expanding the sample size will enhance the reliability and generalizability of the findings. Improving data quality through rigorous collection and validation methods is also essential. Exploring various model types, including advanced regression models and machine learning techniques, can uncover more complex relationships in the data. Temporal analysis, if data over time is available, can reveal changing trends and assist in future predictions. Integrating Geographic Information Systems (GIS) for spatial analysis can offer insights into regional variations. Employing cross-validation and robustness checks will ensure the model’s accuracy and prevent overfitting. Investigating interactions between variables, such as the interplay between diameter and material type, might also provide valuable insights. Collaboration with field experts in civil engineering and urban planning can enhance the model’s validity and applicability. Regularly updating the model with new data and changing conditions will keep it relevant. Additionally, considering environmental impacts and sustainability in the model aligns the study with broader ecological goals. Finally, maintaining thorough documentation and transparency throughout the modeling process is critical for replicability and peer review, ensuring the study's credibility in the scientific community. These enhancements collectively aim to create a robust, comprehensive model that accurately reflects the complexities of urban water infrastructure maintenance.
+
+# References
+Stephanie Glen. "Cook’s Distance / Cook’s D: Definition, Interpretation" From StatisticsHowTo.com: Elementary Statistics for the rest of us! [https://www.statisticshowto.com/cooks-distance/](https://www.statisticshowto.com/cooks-distance/)
